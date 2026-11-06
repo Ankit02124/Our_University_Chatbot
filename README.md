@@ -1,8 +1,8 @@
-# XIM University Chatbot
+# XIMI: XIM University Chatbot
 
 [![tests](https://github.com/Ankit02124/Our_University_Chatbot/actions/workflows/tests.yml/badge.svg)](https://github.com/Ankit02124/Our_University_Chatbot/actions/workflows/tests.yml)
 
-A chatbot that answers student questions about XIM University's rules and policies. It uses retrieval-augmented generation (RAG): the question is matched against the university's official policy documents stored in a ChromaDB vector database, and Mistral AI writes the answer only from the matching passages. Each answer shows the passages it came from.
+XIMI is a B.Tech thesis project by Ananya Verma, Suraj Maharana and Ankit Choudhury, under the guidance of Dr. Sourav Mandal, XIM University. It is a chatbot that answers student questions about XIM University's rules and policies. It uses retrieval-augmented generation (RAG): the question is matched against the university's official policy documents stored in a ChromaDB vector database, and Mistral AI writes the answer only from the matching passages. Each answer shows the passages it came from.
 
 ## Problem statement
 
@@ -128,6 +128,10 @@ The index and the questions must use the same embedding model. If you change the
 - A set of test questions with known answers to measure accuracy after each change.
 - More documents: fee structure, academic calendar, placement policy.
 - Deploy on Streamlit Community Cloud or the university intranet.
+
+## Team
+
+Ananya Verma, Suraj Maharana and Ankit Choudhury (B.Tech thesis), under the guidance of Dr. Sourav Mandal, XIM University.
 
 ## License
 

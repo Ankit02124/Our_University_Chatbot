@@ -5,8 +5,8 @@ from langchain_mistralai import ChatMistralAI, MistralAIEmbeddings
 
 import rag
 
-st.set_page_config(page_title="XIM University Chatbot", page_icon="🎓")
-st.title("🎓 XIM University Chatbot")
+st.set_page_config(page_title="XIMI - XIM University Chatbot", page_icon="🎓")
+st.title("🎓 XIMI - XIM University Chatbot")
 st.caption("Answers come from the university's official policy documents.")
 
 GREETING = (

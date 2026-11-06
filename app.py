@@ -1,96 +1,75 @@
-import streamlit as st
 import os
-from langchain_community.document_loaders import DirectoryLoader, TextLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores import Chroma
-from langchain_mistralai import MistralAIEmbeddings, ChatMistralAI
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnablePassthrough
 
-# --- CONFIGURATION ---
-DATA_PATH = "data_clean"
-DB_PATH = "vector_db_mistral"
+import streamlit as st
+from langchain_mistralai import ChatMistralAI, MistralAIEmbeddings
 
-# --- PAGE SETUP ---
-st.set_page_config(page_title="University Bot", page_icon="🎓")
-st.title("🎓 University AI Assistant")
-st.caption("Powered by Mistral AI • Capstone Project")
+import rag
 
-# --- SIDEBAR: API KEY ---
+st.set_page_config(page_title="XIM University Chatbot", page_icon="🎓")
+st.title("🎓 XIM University Chatbot")
+st.caption("Answers come from the university's official policy documents.")
+
+GREETING = (
+    "Hello! Ask me about academic rules, attendance, exams and grading, "
+    "scholarships or hostel rules."
+)
+
 with st.sidebar:
     st.header("Settings")
-    api_key = st.text_input("Enter Mistral API Key:", type="password")
-    if not api_key:
-        st.warning("Please enter your Mistral API key to start.")
-        st.stop()
-    os.environ["MISTRAL_API_KEY"] = api_key
-    st.success("API Key Accepted!")
+    api_key = os.environ.get("MISTRAL_API_KEY") or st.text_input("Mistral API key", type="password")
+    st.subheader("Documents")
+    for title in rag.DOC_TITLES.values():
+        st.markdown(f"- {title}")
+    if st.button("Clear chat"):
+        st.session_state.messages = []
 
-# --- LOAD DATA ---
+if not api_key:
+    st.info("Enter your Mistral API key in the sidebar to start.")
+    st.stop()
+
+
+@st.cache_resource(show_spinner="Loading the policy documents...")
+def load_retriever(key):
+    embeddings = MistralAIEmbeddings(model=rag.EMBED_MODEL, api_key=key)
+    db = rag.get_vector_db(embeddings)
+    return db.as_retriever(search_type="similarity", search_kwargs={"k": rag.TOP_K})
+
+
 @st.cache_resource
-def load_data():
-    if not os.path.exists(DATA_PATH):
-        st.error("Data not found. Please run clean_data.py first.")
-        st.stop()
-    
-    with st.spinner("Processing University Manuals..."):
-        # Load text files
-        loader = DirectoryLoader(DATA_PATH, glob="*.txt", loader_cls=TextLoader, loader_kwargs={"encoding": "utf-8"})
-        docs = loader.load()
-        
-        # Split into chunks
-        splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-        chunks = splitter.split_documents(docs)
-        
-        # Create Vector Database
-        embeddings = MistralAIEmbeddings(model="mistral-embed")
-        vector_db = Chroma.from_documents(chunks, embeddings, persist_directory=DB_PATH)
-        return vector_db
+def load_llm(key):
+    return ChatMistralAI(model=rag.CHAT_MODEL, temperature=0.1, api_key=key)
 
-# Check if DB exists, if not create it
-if os.path.exists(DB_PATH):
-    embeddings = MistralAIEmbeddings(model="mistral-embed")
-    vector_db = Chroma(persist_directory=DB_PATH, embedding_function=embeddings)
-else:
-    vector_db = load_data()
 
-# --- RAG ENGINE ---
-retriever = vector_db.as_retriever(search_type="similarity", search_kwargs={"k": 5})
-llm = ChatMistralAI(model="mistral-large-latest", temperature=0.1)
+def show_sources(docs):
+    with st.expander("Sources"):
+        for doc in docs:
+            st.markdown(f"**{rag.doc_title(doc)}**")
+            st.text(doc.page_content[:300] + ("..." if len(doc.page_content) > 300 else ""))
 
-# System Prompt
-template = """
-You are a helpful AI assistant for the University. 
-Answer questions strictly based on the provided context. 
-If the answer is not in the context, say "I cannot find that information in the official documents."
 
-Context:
-{context}
+retriever = load_retriever(api_key)
+llm = load_llm(api_key)
 
-Question:
-{question}
-"""
-prompt = ChatPromptTemplate.from_template(template)
-
-# --- CHAT INTERFACE ---
-if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "Hello! I can answer questions about Academic Rules, Hostel Policy, and Mass Comm guidelines. What would you like to know?"}]
+if not st.session_state.get("messages"):
+    st.session_state.messages = [{"role": "assistant", "content": GREETING, "sources": []}]
 
 for msg in st.session_state.messages:
-    st.chat_message(msg["role"]).write(msg["content"])
+    with st.chat_message(msg["role"]):
+        st.write(msg["content"])
+        if msg.get("sources"):
+            show_sources(msg["sources"])
 
-if user_input := st.chat_input():
-    st.session_state.messages.append({"role": "user", "content": user_input})
-    st.chat_message("user").write(user_input)
+if question := st.chat_input("Ask a question"):
+    st.session_state.messages.append({"role": "user", "content": question})
+    st.chat_message("user").write(question)
 
     with st.chat_message("assistant"):
-        chain = (
-            {"context": retriever, "question": RunnablePassthrough()}
-            | prompt
-            | llm
-            | StrOutputParser()
-        )
-        response = chain.invoke(user_input)
-        st.write(response)
-        st.session_state.messages.append({"role": "assistant", "content": response})
+        try:
+            with st.spinner("Searching the documents..."):
+                text, docs = rag.answer(question, retriever, llm)
+        except Exception as err:  # bad key, rate limit, network
+            st.error(f"Mistral API request failed: {err}")
+            st.stop()
+        st.write(text)
+        show_sources(docs)
+    st.session_state.messages.append({"role": "assistant", "content": text, "sources": docs})
